@@ -4,6 +4,11 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader 
 import argparse
 from typing import List, Dict 
+import os
+import torch.optim as optim
+from torch.nn.parallel import DistributedDataParallel as DDP
+from common.model import SimpleCNN
+from common.dataset import get_cifar10_loaders
 
 def init(): 
     """
@@ -44,3 +49,12 @@ class DDP(nn.Module):
         self.bucket_counter = [0] * self.num_buckets 
         self.last_bucket_sz = len(buckets[-1])
         self._register_hooks(buckets, param2bucket)
+
+# Argument parsing for flexibility in batch size, epochs, etc.
+def parse_args():
+    parser = argparse.ArgumentParser(description="PyTorch DDP CIFAR-10 Example")
+    parser.add_argument('--batch-size', type=int, default=64, help='input batch size per process (default: 64)')
+    parser.add_argument('--epochs', type=int, default=2, help='number of epochs to train (default: 2)')
+    parser.add_argument('--lr', type=float, default=0.01, help='learning rate (default: 0.01)')
+    parser.add_argument('--local_rank', type=int, default=0, help='Local process rank. Provided by torchrun')
+    return parser.parse_args()
