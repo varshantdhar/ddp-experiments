@@ -1,12 +1,17 @@
+import os
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.distributed as dist
+from common.model import SimpleCNN
+from common.dataset import get_cifar10_loaders
+from parallelism.ddp import DDP
 import torch, torch.nn as nn, torch.nn.functional as F
-import torch.distributed as dist 
 from datasets import load_dataset
 from torch.utils.data import DataLoader 
 import argparse
 from typing import List, Dict 
-import os
 from contextlib import contextmanager
-from parallelism.ddp import DDP
 
 def init(): 
     """
@@ -52,13 +57,6 @@ def main():
     device = torch.device("cuda", args.local_rank)
 
     # Example: Minimal training loop using custom DDP (no gradient accumulation)
-    from common.model import SimpleCNN
-    from common.dataset import get_cifar10_loaders
-    import torch.optim as optim
-    import torch.nn as nn
-    import torch.distributed as dist
-    import torch
-
     # Set up model and wrap with custom DDP
     model = SimpleCNN().to(device)
     ddp_model = DDP(model, rank=r, world_size=wsz)
