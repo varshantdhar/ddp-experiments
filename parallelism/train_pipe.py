@@ -33,7 +33,7 @@ def get_device(idx):
     return torch.device(f'cuda:{idx}')
 
 # The model is split into two stages for pipeline parallelism.
-class Stage1(nn.Module):
+class StandardConv(nn.Module):
     def __init__(self):
         super().__init__()
         self.seq = nn.Sequential(
@@ -46,7 +46,7 @@ class Stage1(nn.Module):
     def forward(self, x):
         return self.seq(x)
 
-class Stage2(nn.Module):
+class StandardLinear(nn.Module):
     def __init__(self):
         super().__init__()
         self.seq = nn.Sequential(
@@ -58,7 +58,7 @@ class Stage2(nn.Module):
         return self.seq(x)
 
 # Assemble the model and wrap it with Pipe to enable pipeline parallelism across two GPUs per process.
-model = nn.Sequential(Stage1(), Stage2())
+model = nn.Sequential(StandardConv(), StandardLinear())
 chunks = 4  # Number of microbatches for pipeline parallelism
 pipe = Pipe(model, chunks=chunks, devices=[get_device(local_gpus[0]), get_device(local_gpus[1])])
 
