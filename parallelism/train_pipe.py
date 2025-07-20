@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
-from torch.distributed.pipelining import PipelineStage, PipelineScheduleGPipe
+from torch.distributed.pipelining import PipelineStage, ScheduleGPipe
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import os
@@ -68,7 +68,7 @@ stage1 = PipelineStage(
 )
 
 # Create a pipeline schedule (GPipe style)
-schedule = PipelineScheduleGPipe(
+schedule = ScheduleGPipe(
     stages=[stage0, stage1],
     n_microbatches=4,
     loss_fn=nn.CrossEntropyLoss()
