@@ -47,10 +47,10 @@ def parse_args():
 def main():
     args = parse_args()
     r, wsz = init()
-    device = torch.device(f'cuda:{r}')
+    device = torch.device(f'cuda:{args.local_rank}')
     # Each process runs this script independently. We need to initialize the process group so they can communicate.
     # This sets up the backend (NCCL for GPUs) and connects all processes in the job.
-    dist.init_process_group(backend="nccl")
+    # dist.init_process_group(backend="nccl")  # <-- Removed redundant call
 
     # Each process should use only its assigned GPU. local_rank is provided by torchrun.
     torch.cuda.set_device(args.local_rank)
