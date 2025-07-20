@@ -8,9 +8,6 @@ from torch.utils.data import DataLoader
 import os
 from parallelism.ddp import DDP
 
-# -----------------------------
-# Distributed Initialization
-# -----------------------------
 # These environment variables tell PyTorch's distributed backend how to set up communication between processes.
 # - MASTER_ADDR: The address (IP or hostname) of the master node (the coordinator for all processes).
 #   For single-node jobs, 'localhost' is fine. For multi-node, use the master node's IP.
