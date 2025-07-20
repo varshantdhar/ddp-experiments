@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.distributed as dist
-from torch.distributed.pipeline.sync import Pipe
+from torch.distributed.pipelining import PipelineStage, PipelineScheduleGPipe
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import os
@@ -16,7 +16,6 @@ from parallelism.ddp import DDP
 os.environ['MASTER_ADDR'] = 'localhost'
 os.environ['MASTER_PORT'] = '29500'
 
-# Initialize the distributed process group (NCCL backend for GPUs)
 dist.init_process_group(backend='nccl')
 rank = dist.get_rank()           # Unique ID for this process (0, 1, ...)
 world_size = dist.get_world_size()  # Total number of processes in the job
@@ -54,15 +53,28 @@ class StandardLinear(nn.Module):
     def forward(self, x):
         return self.seq(x)
 
-# Assemble the model and wrap it with Pipe to enable pipeline parallelism across two GPUs per process.
-model = nn.Sequential(StandardConv(), StandardLinear())
-chunks = 4  # Number of microbatches for pipeline parallelism
-pipe = Pipe(model, chunks=chunks, devices=[get_device(local_gpus[0]), get_device(local_gpus[1])])
+# Create pipeline stages using the new pipelining API
+stage0 = PipelineStage(
+    module=StandardConv(),
+    stage_index=0,
+    num_stages=2,
+    device=get_device(local_gpus[0])
+)
+stage1 = PipelineStage(
+    module=StandardLinear(),
+    stage_index=1,
+    num_stages=2,
+    device=get_device(local_gpus[1])
+)
 
-# Wrap the pipeline model with your custom DDP class to synchronize gradients across pipeline replicas (processes).
-ddp_pipe = DDP(pipe, rank=rank, world_size=world_size)
+# Create a pipeline schedule (GPipe style)
+schedule = PipelineScheduleGPipe(
+    stages=[stage0, stage1],
+    n_microbatches=4,
+    loss_fn=nn.CrossEntropyLoss()
+)
 
-# Use a distributed sampler so each process sees a unique subset of the data.
+# Data Preparation (MNIST)
 transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.1307,), (0.3081,))
@@ -72,24 +84,19 @@ train_sampler = torch.utils.data.distributed.DistributedSampler(
     train_dataset, num_replicas=world_size, rank=rank, shuffle=True)
 train_loader = DataLoader(train_dataset, batch_size=64, sampler=train_sampler)
 
-# Standard training loop: forward, backward, synchronize gradients, optimizer step.
-optimizer = optim.SGD(ddp_pipe.parameters(), lr=0.01)
-criterion = nn.CrossEntropyLoss()
+# Optimizer for all parameters in both stages
+optimizer = optim.SGD(list(stage0.parameters()) + list(stage1.parameters()), lr=0.01)
 
-ddp_pipe.train()
+# Training loop using the new pipelining schedule
 for epoch in range(1):
-    train_sampler.set_epoch(epoch)  # Ensures shuffling is different each epoch across processes
+    train_sampler.set_epoch(epoch)
     for batch_idx, (data, target) in enumerate(train_loader):
-        # Move data to the first GPU of this process's group
         data, target = data.cuda(local_gpus[0]), target.cuda(local_gpus[0])
         optimizer.zero_grad()
-        output = ddp_pipe(data)
-        loss = criterion(output, target)
-        loss.backward()
-        ddp_pipe.synchronize()  # Wait for all async all-reduce ops to finish
+        # This runs forward and backward through the pipeline
+        schedule.step(data, target=target)
         optimizer.step()
         if batch_idx % 10 == 0 and rank == 0:
-            print(f'Epoch {epoch} Batch {batch_idx} Loss: {loss.item():.4f}')
+            print(f'Epoch {epoch} Batch {batch_idx} Loss: (see schedule.loss_fn)')
 
-# Clean up the distributed process group
 dist.destroy_process_group() 
